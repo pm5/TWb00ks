@@ -1,0 +1,50 @@
+{
+  "searchEngine": "google",
+  "sheetId": "1Z0JUS0fw5SFaX1-oht6jEx5i8XI888vx5F9jm9BEggI",
+  "stagingTabName": "暫貼區",
+  "mainTabName": "成人書單",
+  "bookstores": [
+    {
+      "id": "books",
+      "name": "博客來",
+      "columnName": "books",
+      "searchUrl": "https://search.books.com.tw/search/query/key/{title}"
+    },
+    {
+      "id": "kingstone",
+      "name": "金石堂",
+      "columnName": "kingstone",
+      "searchUrl": "https://www.kingstone.com.tw/search/search?q={title}"
+    },
+    {
+      "id": "eslite",
+      "name": "誠品",
+      "columnName": "eslite",
+      "searchUrl": "https://www.eslite.com/Search?q={title}"
+    },
+    {
+      "id": "momo",
+      "name": "momo",
+      "columnName": "momo",
+      "searchUrl": null
+    },
+    {
+      "id": "kobo",
+      "name": "Kobo",
+      "columnName": "kobo",
+      "searchUrl": null
+    },
+    {
+      "id": "readmoo",
+      "name": "Readmoo",
+      "columnName": "readmoo",
+      "searchUrl": null
+    },
+    {
+      "id": "taaze",
+      "name": "讀冊",
+      "columnName": "tazze",
+      "searchUrl": null
+    }
+  ]
+}
