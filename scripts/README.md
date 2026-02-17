@@ -92,39 +92,30 @@ npm run sync
 
 This command syncs book data from Google Sheets to the local `books_data.ts` file.
 
-### Generate Bookstore Links (Coming Soon)
+### Interactive Link Review (Coming Soon)
 
 ```bash
-node scripts/generate-links.js
+npm run review-links
 ```
 
 This will:
 1. Read book titles from "暫貼區" tab
-2. Generate search links for each bookstore
-3. Open links in browser for manual verification
-4. Save results back to the sheet
+2. For each book, generate and open bookstore search links in browser
+3. Allow you to review and paste the correct purchase URLs
+4. Save the approved links back to the staging area
+5. Optionally merge approved links to "成人書單" tab
 
-### Review Links (Coming Soon)
+### Batch Link Generation (Coming Soon)
 
 ```bash
-node scripts/review-links.js
+npm run find-links
 ```
 
 This will:
-1. Display books with generated links
-2. Allow approval/rejection of each link
-3. Update the staging area with review status
-
-### Merge to Main Tab (Coming Soon)
-
-```bash
-node scripts/merge-links.js
-```
-
-This will:
-1. Take approved links from "暫貼區"
-2. Merge them into "成人書單" tab
-3. Update existing book records with new bookstore links
+1. Read book titles from "暫貼區" tab
+2. Use "I'm Feeling Lucky" search to automatically find purchase links
+3. Save generated links back to the staging area for review
+4. Links should still be manually reviewed before merging to main tab
 
 ## Files
 

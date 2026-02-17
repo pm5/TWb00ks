@@ -7,43 +7,50 @@
     {
       "id": "books",
       "name": "博客來",
-      "columnName": "books",
+      "columnName": "博客來",
+      "domain": "books.com.tw",
       "searchUrl": "https://search.books.com.tw/search/query/key/{title}"
     },
     {
       "id": "kingstone",
       "name": "金石堂",
-      "columnName": "kingstone",
+      "columnName": "金石堂",
+      "domain": "kingstone.com.tw",
       "searchUrl": "https://www.kingstone.com.tw/search/search?q={title}"
     },
     {
       "id": "eslite",
       "name": "誠品",
-      "columnName": "eslite",
+      "columnName": "誠品",
+      "domain": "eslite.com",
       "searchUrl": "https://www.eslite.com/Search?q={title}"
     },
     {
       "id": "momo",
       "name": "momo",
       "columnName": "momo",
+      "domain": "momoshop.com.tw",
       "searchUrl": null
     },
     {
       "id": "kobo",
       "name": "Kobo",
-      "columnName": "kobo",
+      "columnName": "Kobo",
+      "domain": "kobo.com",
       "searchUrl": null
     },
     {
       "id": "readmoo",
       "name": "Readmoo",
       "columnName": "readmoo",
+      "domain": "readmoo.com",
       "searchUrl": null
     },
     {
       "id": "taaze",
       "name": "讀冊",
       "columnName": "tazze",
+      "domain": "taaze.tw",
       "searchUrl": null
     }
   ]
