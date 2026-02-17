@@ -200,6 +200,10 @@ export async function writeSheetRange(sheetId, tabName, range, values) {
  * @returns {Promise<Object|null>} Object with rowIndex and rowData, or null if not found
  */
 export async function findRowByTitle(sheetId, tabName, title) {
+  if (!title || typeof title !== 'string' || !title.trim()) {
+    throw new Error('Title parameter must be a non-empty string');
+  }
+
   const data = await readSheetTab(sheetId, tabName);
 
   if (!data || data.length === 0) {
@@ -232,7 +236,7 @@ export async function findRowByTitle(sheetId, tabName, title) {
 
     if (cellValue && cellValue.trim().toLowerCase() === searchTitle) {
       return {
-        rowIndex: i + 1, // 1-indexed for Sheets (adding 1 because we started from index 1)
+        rowIndex: i + 1, // Convert 0-based array index to 1-based sheet row (accounting for header row)
         rowData: row,
         headers: headers,
       };

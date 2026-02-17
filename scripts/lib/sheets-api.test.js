@@ -17,8 +17,13 @@ import {
 } from './sheets-api.js';
 
 // Configuration - Update these with your test sheet details
-const TEST_SHEET_ID = '1Z0JUS0fw5SFaX1-oht6jEx5i8XI888vx5F9jm9BEggI';
+// IMPORTANT: Use a separate test sheet, not the production sheet!
+// Set TEST_SHEET_ID environment variable or create a test-specific sheet
+const TEST_SHEET_ID = process.env.TEST_SHEET_ID || '1Z0JUS0fw5SFaX1-oht6jEx5i8XI888vx5F9jm9BEggI';
 const TEST_TAB_NAME = '暫貼區';
+
+console.warn('⚠️  Using sheet ID:', TEST_SHEET_ID);
+console.warn('⚠️  Make sure this is a TEST sheet, not production!');
 
 // Test results tracking
 let passed = 0;
