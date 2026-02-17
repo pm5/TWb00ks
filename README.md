@@ -104,6 +104,182 @@ mkdir -p .gemini && ln -s ../AGENTS.md .gemini/GEMINI.md
     - 在同一個難易度群組內，依照試算表中的「排序」欄位 (數字) 進行升冪排列。
     - 數字越小，排序越前。
 
+## 書籍連結工具 / Book Links Tools
+
+為了豐富書籍資訊並提供讀者多元的購書管道，本專案提供自動化工具來收集與管理各大書店的購書連結。
+
+### 工具概覽 (Overview)
+
+本系統提供兩種工作流程：
+
+1. **CLI 工具流程 (Node.js)** - 適合技術使用者，支援自動化搜尋與批次處理
+2. **AppScript 工具流程 (Google Sheets)** - 適合非技術使用者，直接在試算表中操作
+
+### 支援的書店 (Supported Bookstores)
+
+系統支援以下 7 家台灣主要書店：
+
+- **博客來** (Books.com.tw)
+- **金石堂** (Kingstone)
+- **誠品** (Eslite)
+- **momo購物網** (Momo)
+- **Kobo** (電子書)
+- **Readmoo** (電子書)
+- **讀冊生活** (Taaze)
+
+### CLI 工具流程 (CLI Workflow)
+
+#### 前置準備
+
+1. **設置 Google Sheets API 憑證：**
+   - 詳細步驟請參考 [scripts/README.md](scripts/README.md#2-configure-google-sheets-api-credentials)
+   - 需要建立 Google Cloud 服務帳號並下載憑證檔案
+
+2. **建立暫貼區分頁：**
+   - 在試算表中新增名為 `暫貼區` 的分頁
+   - 詳細設置說明請參考 [docs/staging-tab-setup.md](docs/staging-tab-setup.md)
+
+#### 使用步驟
+
+**方式 1：互動式審核 (推薦)**
+
+```bash
+npm run review-links
+```
+
+此命令會：
+1. 從 `暫貼區` 讀取書名
+2. 為每本書自動產生各書店連結
+3. 在瀏覽器中開啟所有連結供人工審核
+4. 詢問是否確認 (Y/N)
+5. 確認後自動合併至 `成人書單` 主表
+
+**方式 2：批次產生連結**
+
+```bash
+npm run find-links
+```
+
+此命令會：
+1. 自動為所有書籍產生書店連結
+2. 儲存至 `暫貼區` 供後續審核
+3. 不會自動合併至主表（需人工審核後再合併）
+
+#### 特定書籍處理
+
+```bash
+npm run review-links --title="書名"
+```
+
+僅處理指定的單一書籍。
+
+### AppScript 工具流程 (AppScript Workflow)
+
+#### 部署設置
+
+1. 開啟試算表，點選 **擴充功能** → **Apps Script**
+2. 複製 [appscript/approve-links.gs](appscript/approve-links.gs) 的內容
+3. 貼上並儲存
+4. 重新整理試算表，會出現 **Book Links** 選單
+
+詳細部署說明請參考 [appscript/README.md](appscript/README.md)
+
+#### 使用步驟
+
+**單一連結審核 (Cell-Level)**
+
+1. 在 `暫貼區` 分頁中點選要審核的書店連結儲存格
+2. 點選 **Book Links** → **Approve Selected Cell**
+3. 該連結會被複製到 `成人書單` 對應欄位
+
+適用時機：只確認了某個書店的連結，其他書店還在查證中。
+
+**整本書審核 (Row-Level)**
+
+1. 在 `暫貼區` 分頁中選取一整列（或多列）
+2. 點選 **Book Links** → **Approve Selected Row(s)**
+3. 該書的所有連結會被批次複製到 `成人書單`
+
+適用時機：已確認該書所有書店連結都正確。
+
+### 關鍵規則與特色 (Key Features & Rules)
+
+#### 規則 1：絕不覆寫現有連結 (Never Overwrite)
+
+合併連結時：
+- ✅ **空白欄位** → 填入新連結
+- ✅ **"NOT_FOUND"** → 更新為新連結
+- ❌ **已有連結** → 保持不變（不覆寫）
+
+這確保人工編輯的連結不會被自動工具覆蓋。
+
+#### 規則 2：書籍必須已存在主表 (Book Must Exist)
+
+- 只能為 `成人書單` 中已存在的書籍增補連結
+- 新書需先加入主表（包含完整書籍資訊：作者、分類、描述等）
+- `暫貼區` 用於補充連結，不用於新增書籍
+
+#### 特色：雙重審核機制
+
+- **自動產生 + 人工確認**：工具自動搜尋連結，但需人工審核確認
+- **分級審核**：可單一連結審核（細緻）或整本書審核（快速）
+- **工作流程隔離**：暫貼區與主表分離，避免誤改主要資料
+
+### 詳細文檔 (Detailed Documentation)
+
+- **CLI 工具設置與使用：** [scripts/README.md](scripts/README.md)
+- **AppScript 部署指南：** [appscript/README.md](appscript/README.md)
+- **暫貼區分頁設置：** [docs/staging-tab-setup.md](docs/staging-tab-setup.md)
+- **測試檢查清單：** [docs/plans/2026-02-17-book-links-testing.md](docs/plans/2026-02-17-book-links-testing.md)
+- **系統設計文檔：** [docs/plans/2026-02-16-book-links-tool-design.md](docs/plans/2026-02-16-book-links-tool-design.md)
+
+### 工作流程範例 (Workflow Example)
+
+```
+1. [人工] 在暫貼區填寫書名
+         ↓
+2. [CLI] npm run review-links
+         ↓
+3. [自動] 產生各書店連結並開啟瀏覽器
+         ↓
+4. [人工] 檢查連結是否正確，輸入 Y 或 N
+         ↓
+5. [自動] Y：寫入暫貼區 + 合併至主表
+         ↓
+6. [現有] npm run sync 同步至程式碼庫
+```
+
+或使用 AppScript 流程：
+
+```
+1. [人工] 在暫貼區手動搜尋並貼上連結
+   或     執行 npm run find-links 自動產生
+         ↓
+2. [人工] 在試算表中檢視連結
+         ↓
+3. [人工] 選擇儲存格/列，點選 Book Links 選單
+         ↓
+4. [自動] 合併至成人書單
+         ↓
+5. [現有] npm run sync 同步至程式碼庫
+```
+
+### 故障排除 (Troubleshooting)
+
+**問題：「Book not found in main tab」**
+- **原因：** 書籍尚未加入 `成人書單`
+- **解決：** 先在主表中新增該書完整資訊，再審核連結
+
+**問題：CLI 工具無法存取試算表**
+- **原因：** 服務帳號權限不足
+- **解決：** 將試算表分享給服務帳號的 email（在 `.credentials.json` 中的 `client_email`）
+
+**問題：AppScript 選單未出現**
+- **原因：** 腳本未正確部署或未授權
+- **解決：** 檢查部署步驟，執行一次 `onOpen` 函數並授權
+
+更多問題請參考各工具的 README 文檔。
+
 ## 待辦事項 / Todo List
 
 - [x] **推薦功能改版 (Revamp Recommendation):** 將「我要推薦」功能改成使用 Google Form: [Link](https://docs.google.com/forms/d/1HZPkLNFjrCWHlJ5qjLVhf6sM5AFGG5-w12R71jqt_PQ/edit)
