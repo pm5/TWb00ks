@@ -343,9 +343,214 @@ Edit `searchEngine` in config:
 
 Options: `"google"`, `"duckduckgo"`
 
-## Implementation Phases
+## Implementation Plan
 
-See separate implementation plan document.
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task.
+
+### Phase 1: Setup & Configuration
+
+**Files to create:**
+- `scripts/bookstores.config.json` - Bookstore definitions and search engine config
+- `scripts/.credentials.json.example` - Google Sheets API credentials template
+- `scripts/README.md` - Setup and usage documentation
+
+**Steps:**
+1. Create config file with all 7 bookstores (博客來, 金石堂, 誠品, momo, Kobo, readmoo, tazze)
+2. Add dependencies to package.json: `googleapis`, `open`
+3. Run `npm install`
+4. Add credentials template and setup docs
+5. Update .gitignore to exclude `.credentials.json`
+
+### Phase 2: Google Sheets Integration
+
+**Files to create:**
+- `scripts/lib/sheets-api.js` - Sheets API wrapper functions
+
+**Core functions:**
+- `initSheetsClient()` - Initialize API client with credentials
+- `readSheetTab(sheetId, tabName, range)` - Read data from sheet
+- `writeSheetRange(sheetId, tabName, range, values)` - Write data to sheet
+- `findRowByTitle(sheetId, tabName, title)` - Find book by title
+- `getColumnIndex(headers, columnName)` - Map column names to indices
+- `columnIndexToLetter(index)` - Convert index to A1 notation
+
+### Phase 3: Link Generation
+
+**Files to create:**
+- `scripts/lib/link-generator.js` - Search and link generation logic
+
+**Core functions:**
+- `generateBookstoreLink(title, bookstore, searchEngine)` - Single bookstore
+  - Try "I'm Feeling Lucky" search (Google or DuckDuckGo)
+  - Fallback to search page URL if defined
+  - Return "NOT_FOUND" if no fallback
+- `generateAllLinks(title, bookstores, searchEngine)` - All bookstores
+  - Loop through bookstores with 500ms rate limiting
+  - Return map of bookstore ID → URL
+
+**Implementation notes:**
+- Google: `https://www.google.com/search?q={query}&btnI=1` redirects to result
+- DuckDuckGo: `https://duckduckgo.com/?q=!ducky+{query}` redirects to result
+- Follow redirects, filter out search engine URLs
+
+### Phase 4: Core CLI Logic
+
+**Files to create:**
+- `scripts/lib/book-links-core.js` - High-level operations
+
+**Core functions:**
+- `loadConfig()` - Load bookstores.config.json
+- `readStagingArea()` - Get all books from 暫貼區
+  - Returns: `[{ rowIndex, title, links: {...} }]`
+- `writeStagingLinks(rowIndex, links)` - Write links to staging row
+- `findBookInMain(title)` - Find book in main tab by title
+- `mergeLinksToMain(title, links)` - Merge links with validation
+  - Check book exists (error if not)
+  - Only update empty fields or "NOT_FOUND"
+  - Never overwrite existing links
+- `generateMissingLinks(book)` - Generate links for missing bookstores
+
+### Phase 5: Interactive Review CLI
+
+**Files to create:**
+- `scripts/book-links.js` - Main CLI entry point
+
+**Commands:**
+- `npm run review-links` - Interactive review session
+- `npm run find-links` - Batch generate without review
+
+**Interactive review flow:**
+1. Load books from staging area with missing links
+2. For each book:
+   - Generate missing links
+   - Display title + all links in console
+   - Open all valid links in browser tabs
+   - Prompt: "Are all links correct? (Y/N)"
+   - If Y: Write to staging + merge to main
+   - If N: Skip to next book
+3. Show summary (X approved, Y skipped)
+
+**Key features:**
+- Use `readline` for Y/N prompts
+- Use `open` package for browser automation
+- Handle Ctrl+C gracefully
+- Clear error messages for common issues
+
+### Phase 6: Google AppScript
+
+**Files to create:**
+- `appscript/approve-links.gs` - AppScript code
+- `appscript/README.md` - Deployment instructions
+
+**Implementation:**
+1. `onOpen()` - Add custom menu with 2 buttons
+2. `approveSelectedCell()` - Single link approval
+   - Validate: in staging tab, single cell, bookstore column
+   - Find book in main tab by title (error if not found)
+   - Copy link if main cell is empty or "NOT_FOUND"
+3. `approveSelectedRows()` - Bulk approval
+   - Validate: in staging tab, one or more rows
+   - For each row: find book, merge all links
+   - Show summary with errors
+4. Helper functions:
+   - `mergeSingleLink(title, bookstore, linkValue)`
+   - `mergeAllLinks(title, links)`
+   - `findBookInMainTab(title)`
+
+**Config:**
+```javascript
+const CONFIG = {
+  STAGING_TAB: '暫貼區',
+  MAIN_TAB: '成人書單',
+  TITLE_COLUMN: 1, // 0-indexed
+  BOOKSTORES: ['博客來', '金石堂', '誠品', 'momo', 'Kobo', 'readmoo', 'tazze']
+};
+```
+
+### Phase 7: Documentation
+
+**Files to create/update:**
+- `docs/staging-tab-setup.md` - How to create 暫貼區 tab
+- `README.md` - Add "書籍連結工具" section
+- `docs/plans/2026-02-17-book-links-testing.md` - Testing checklist
+
+**Documentation content:**
+1. **Staging tab setup**: Exact column headers and order
+2. **CLI setup**: Google Sheets API credentials, npm commands
+3. **AppScript deployment**: Copy-paste instructions
+4. **Testing checklist**: All test cases for validation
+
+### Phase 8: Testing & Validation
+
+**Manual testing:**
+1. CLI workflow:
+   - Add test books to 暫貼區
+   - Run `npm run review-links`
+   - Verify links open in browser
+   - Test Y approval (writes to staging + main)
+   - Test N skip
+   - Verify existing links not overwritten
+   - Test error when book not in main tab
+
+2. AppScript workflow:
+   - Deploy AppScript to sheet
+   - Test "Approve Selected Cell" button
+   - Test "Approve Selected Row" button
+   - Verify validation rules apply
+
+3. Edge cases:
+   - Books with special characters in title
+   - Books with partial links already present
+   - Search failures (fallback to search page)
+   - Both search engines (Google and DuckDuckGo)
+
+**Success criteria:**
+- ✅ All 7 bookstores generate links correctly
+- ✅ Interactive review completes successfully
+- ✅ AppScript approval works for cell and row
+- ✅ No overwrites of existing links
+- ✅ Error shown when book not found in main tab
+- ✅ Documentation clear for new users
+
+### Dependencies
+
+**npm packages:**
+```json
+{
+  "googleapis": "^144.0.0",  // Google Sheets API
+  "open": "^10.1.0"           // Cross-platform browser opener
+}
+```
+
+**External setup:**
+- Google Cloud Console: Enable Sheets API, create service account
+- Google Sheet: Share with service account email
+- Browser: For opening links during review
+
+### File Structure
+
+```
+scripts/
+  ├── bookstores.config.json        # Configuration
+  ├── .credentials.json             # API credentials (gitignored)
+  ├── .credentials.json.example     # Template
+  ├── README.md                     # Setup docs
+  ├── book-links.js                 # Main CLI
+  └── lib/
+      ├── sheets-api.js             # Sheets integration
+      ├── link-generator.js         # Search logic
+      └── book-links-core.js        # Core operations
+
+appscript/
+  ├── approve-links.gs              # AppScript code
+  └── README.md                     # Deployment guide
+
+docs/
+  ├── staging-tab-setup.md          # Tab setup guide
+  └── plans/
+      ├── 2026-02-16-book-links-tool-design.md      # This document
+      └── 2026-02-17-book-links-testing.md          # Testing checklist
+```
 
 ## Future Enhancements
 
