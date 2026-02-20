@@ -252,8 +252,8 @@ export async function mergeLinksToMain(title, links) {
     const currentValue = (rowData[columnIndex] || '').trim();
     const newValue = (links[bookstore.id] || '').trim();
 
-    // Rule 1: Only update if current value is empty or "NOT_FOUND"
-    const shouldUpdate = (!currentValue || currentValue === 'NOT_FOUND') && newValue;
+    // Rule 1: Only update if current value is empty or "NOT_FOUND", and new value is a real link
+    const shouldUpdate = (!currentValue || currentValue === 'NOT_FOUND') && newValue && newValue !== 'NOT_FOUND';
 
     if (shouldUpdate) {
       const columnLetter = columnIndexToLetter(columnIndex);
