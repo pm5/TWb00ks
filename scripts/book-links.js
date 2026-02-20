@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Interactive Book Links CLI
  * Two modes:
@@ -6,14 +7,15 @@
  * - generate: Batch generation without review
  */
 
-import readline from 'readline';
 import open from 'open';
+import readline from 'readline';
 import {
-  loadConfig,
-  readStagingArea,
   generateMissingLinks,
-  writeStagingLinks,
+  loadConfig,
   mergeLinksToMain,
+  readMainTabLinks,
+  readStagingArea,
+  writeStagingLinks,
 } from './lib/book-links-core.js';
 
 // ANSI color codes for better UX
@@ -37,42 +39,56 @@ function createReadlineInterface() {
   });
 }
 
-// Helper to ask a yes/no question
-function askYesNo(rl, question) {
+// Ask which links to accept: Y=all, N=none, or space/comma-separated numbers
+function askLinkSelection(rl, bookstores) {
   return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      const normalized = answer.trim().toLowerCase();
-      resolve(normalized === 'y' || normalized === 'yes');
-    });
+    rl.question(
+      `${colors.bright}Accept which links? (Y=all, N=none, or numbers e.g. "1 3"): ${colors.reset}`,
+      (answer) => {
+        const normalized = answer.trim().toLowerCase();
+        if (normalized === 'y' || normalized === 'yes') {
+          resolve(new Set(bookstores.map((b) => b.id)));
+        } else if (normalized === 'n' || normalized === 'no') {
+          resolve(new Set());
+        } else {
+          const nums = normalized
+            .split(/[\s,]+/)
+            .map((n) => parseInt(n, 10))
+            .filter((n) => !isNaN(n) && n >= 1 && n <= bookstores.length);
+          resolve(new Set(nums.map((n) => bookstores[n - 1].id)));
+        }
+      },
+    );
   });
 }
 
-// Display formatted book title and links
+// Display formatted book title and links with numbered entries
 function displayBookLinks(title, links, bookstores) {
   console.log(`\n${colors.bright}${colors.blue}📚 書名: ${title}${colors.reset}`);
   console.log(`${colors.gray}═══════════════════════════${colors.reset}`);
 
-  for (const bookstore of bookstores) {
+  bookstores.forEach((bookstore, i) => {
     const link = links[bookstore.id] || '';
+    const num = `${colors.bright}${i + 1}.${colors.reset}`;
 
     if (!link || link.trim() === '') {
       // Empty/missing link
-      console.log(`${colors.gray}○ ${bookstore.name}: (empty)${colors.reset}`);
+      console.log(`${num} ${colors.gray}${bookstore.name}: (empty)${colors.reset}`);
     } else if (link === 'NOT_FOUND') {
       // Not found
-      console.log(`${colors.yellow}○ ${bookstore.name}: NOT_FOUND${colors.reset}`);
+      console.log(`${num} ${colors.yellow}${bookstore.name}: NOT_FOUND${colors.reset}`);
     } else {
       // Valid URL
-      console.log(`${colors.green}✓ ${bookstore.name}: ${colors.cyan}${link}${colors.reset}`);
+      console.log(`${num} ${colors.green}✓ ${bookstore.name}: ${colors.cyan}${link}${colors.reset}`);
     }
-  }
+  });
   console.log('');
 }
 
 // Open valid links in browser tabs
 async function openLinksInBrowser(links) {
   const validLinks = Object.values(links).filter(
-    link => link && link.trim() !== '' && link !== 'NOT_FOUND' && link.startsWith('http')
+    (link) => link && link.trim() !== '' && link !== 'NOT_FOUND' && link.startsWith('http'),
   );
 
   if (validLinks.length === 0) {
@@ -83,23 +99,27 @@ async function openLinksInBrowser(links) {
   console.log(`${colors.cyan}🌐 Opening ${validLinks.length} link(s) in browser...${colors.reset}`);
 
   // Open all links simultaneously
-  const openPromises = validLinks.map(link =>
-    open(link).catch(err => {
+  const openPromises = validLinks.map((link) =>
+    open(link).catch((err) => {
       console.error(`${colors.red}Error opening ${link}: ${err.message}${colors.reset}`);
-    })
+    }),
   );
 
   await Promise.all(openPromises);
 
   // Wait for tabs to load
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
 }
 
-// Check if a book has missing links
-function hasMissingLinks(book, bookstores) {
+// Check if a book has missing links (considering both staging and main tab)
+function hasMissingLinks(book, bookstores, mainTabLinks = {}) {
+  const mainLinks = mainTabLinks[book.title] || {};
   for (const bookstore of bookstores) {
-    const link = book.links[bookstore.id] || '';
-    if (!link || link.trim() === '' || link === 'NOT_FOUND') {
+    const stagingLink = (book.links[bookstore.id] || '').trim();
+    const mainLink = (mainLinks[bookstore.id] || '').trim();
+    const stagingMissing = !stagingLink || stagingLink === 'NOT_FOUND';
+    const mainMissing = !mainLink || mainLink === 'NOT_FOUND';
+    if (stagingMissing && mainMissing) {
       return true;
     }
   }
@@ -112,12 +132,10 @@ async function reviewSession() {
 
   try {
     const config = loadConfig();
-    const allBooks = await readStagingArea();
+    const [allBooks, mainTabLinks] = await Promise.all([readStagingArea(), readMainTabLinks()]);
 
-    // Filter books with missing links
-    const booksWithMissingLinks = allBooks.filter(book =>
-      hasMissingLinks(book, config.bookstores)
-    );
+    // Filter books with missing links (checking both staging and main tab)
+    const booksWithMissingLinks = allBooks.filter((book) => hasMissingLinks(book, config.bookstores, mainTabLinks));
 
     if (booksWithMissingLinks.length === 0) {
       console.log(`${colors.green}✓ No books with missing links found in staging area!${colors.reset}`);
@@ -149,7 +167,7 @@ async function reviewSession() {
         // Generate missing links
         let updatedLinks;
         try {
-          updatedLinks = await generateMissingLinks(book);
+          updatedLinks = await generateMissingLinks(book, mainTabLinks);
         } catch (error) {
           errors++;
           const errorMsg = `Failed to generate links for "${book.title}": ${error.message}`;
@@ -162,19 +180,37 @@ async function reviewSession() {
         // Display formatted output
         displayBookLinks(book.title, updatedLinks, config.bookstores);
 
+        // Skip prompt if no valid links were found
+        const hasValidLinks = Object.values(updatedLinks).some(
+          (link) => link && link.trim() !== '' && link !== 'NOT_FOUND',
+        );
+        if (!hasValidLinks) {
+          console.log(`${colors.gray}○ No valid links found, skipping${colors.reset}\n`);
+          skipped++;
+          continue;
+        }
+
         // Open browser tabs
         await openLinksInBrowser(updatedLinks);
 
-        // Prompt for approval
-        const isApproved = await askYesNo(
-          rl,
-          `${colors.bright}Are all links correct? (Y/N): ${colors.reset}`
-        );
+        // Prompt for selection
+        const acceptedIds = await askLinkSelection(rl, config.bookstores);
 
-        if (isApproved) {
+        if (acceptedIds.size === 0) {
+          console.log(`${colors.yellow}⊘ Skipped${colors.reset}`);
+          skipped++;
+        } else {
+          // Build links to save: accepted ones use new values, others keep original staging values
+          const linksToSave = {};
+          for (const bookstore of config.bookstores) {
+            linksToSave[bookstore.id] = acceptedIds.has(bookstore.id)
+              ? updatedLinks[bookstore.id]
+              : book.links[bookstore.id];
+          }
+
           // Write to staging
           try {
-            await writeStagingLinks(book.rowIndex, updatedLinks);
+            await writeStagingLinks(book.rowIndex, linksToSave);
             console.log(`${colors.green}✓ Saved to staging area${colors.reset}`);
           } catch (error) {
             errors++;
@@ -186,12 +222,14 @@ async function reviewSession() {
 
           // Merge to main
           try {
-            const mergeResult = await mergeLinksToMain(book.title, updatedLinks);
+            const mergeResult = await mergeLinksToMain(book.title, linksToSave);
             if (mergeResult.success) {
               if (mergeResult.updatedCells > 0) {
                 console.log(`${colors.green}✓ Merged ${mergeResult.updatedCells} link(s) to main tab${colors.reset}`);
               } else {
-                console.log(`${colors.gray}○ No updates needed in main tab (all fields already populated)${colors.reset}`);
+                console.log(
+                  `${colors.gray}○ No updates needed in main tab (all fields already populated)${colors.reset}`,
+                );
               }
             } else {
               // Book not found in main tab - this is expected sometimes
@@ -206,9 +244,6 @@ async function reviewSession() {
           }
 
           approved++;
-        } else {
-          console.log(`${colors.yellow}⊘ Skipped${colors.reset}`);
-          skipped++;
         }
 
         console.log('');
@@ -231,7 +266,6 @@ async function reviewSession() {
         console.log(`  ${idx + 1}. ${msg}`);
       });
     }
-
   } catch (error) {
     console.error(`${colors.red}✗ Fatal error: ${error.message}${colors.reset}`);
     process.exit(1);
@@ -244,12 +278,10 @@ async function generateLinks() {
 
   try {
     const config = loadConfig();
-    const allBooks = await readStagingArea();
+    const [allBooks, mainTabLinks] = await Promise.all([readStagingArea(), readMainTabLinks()]);
 
-    // Filter books with missing links
-    const booksWithMissingLinks = allBooks.filter(book =>
-      hasMissingLinks(book, config.bookstores)
-    );
+    // Filter books with missing links (checking both staging and main tab)
+    const booksWithMissingLinks = allBooks.filter((book) => hasMissingLinks(book, config.bookstores, mainTabLinks));
 
     if (booksWithMissingLinks.length === 0) {
       console.log(`${colors.green}✓ No books with missing links found in staging area!${colors.reset}`);
@@ -270,7 +302,7 @@ async function generateLinks() {
       // Generate missing links
       let updatedLinks;
       try {
-        updatedLinks = await generateMissingLinks(book);
+        updatedLinks = await generateMissingLinks(book, mainTabLinks);
       } catch (error) {
         errors++;
         const errorMsg = `Failed to generate links for "${book.title}": ${error.message}`;
@@ -305,7 +337,6 @@ async function generateLinks() {
         console.log(`  ${idx + 1}. ${msg}`);
       });
     }
-
   } catch (error) {
     console.error(`${colors.red}✗ Fatal error: ${error.message}${colors.reset}`);
     process.exit(1);
@@ -341,7 +372,7 @@ async function main() {
 }
 
 // Run main function
-main().catch(error => {
+main().catch((error) => {
   console.error(`${colors.red}✗ Unexpected error: ${error.message}${colors.reset}`);
   process.exit(1);
 });

@@ -6,14 +6,8 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import {
-  readSheetTab,
-  writeSheetRange,
-  findRowByTitle,
-  getColumnIndex,
-  columnIndexToLetter,
-} from './sheets-api.js';
 import { generateAllLinks } from './link-generator.js';
+import { columnIndexToLetter, findRowByTitle, getColumnIndex, readSheetTab, writeSheetRange } from './sheets-api.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +29,7 @@ export function loadConfig() {
   if (!fs.existsSync(CONFIG_PATH)) {
     throw new Error(
       `Configuration file not found at: ${CONFIG_PATH}\n` +
-      `Please ensure bookstores.config.json exists in the scripts directory.`
+        `Please ensure bookstores.config.json exists in the scripts directory.`,
     );
   }
 
@@ -65,8 +59,7 @@ export function loadConfig() {
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(
-        `Failed to parse configuration file: ${error.message}\n` +
-        `Please ensure ${CONFIG_PATH} contains valid JSON.`
+        `Failed to parse configuration file: ${error.message}\n` + `Please ensure ${CONFIG_PATH} contains valid JSON.`,
       );
     }
     throw error;
@@ -90,17 +83,13 @@ export async function readStagingArea() {
 
   // Find title column
   const titleColumnIndex = headers.findIndex(
-    header => header && (
-      header.toLowerCase().includes('title') ||
-      header.includes('書名') ||
-      header === 'Title'
-    )
+    (header) => header && (header.toLowerCase().includes('title') || header.includes('書名') || header === 'Title'),
   );
 
   if (titleColumnIndex === -1) {
     throw new Error(
       `Could not find Title column in staging area "${config.stagingTabName}".\n` +
-      `Available headers: ${headers.join(', ')}`
+        `Available headers: ${headers.join(', ')}`,
     );
   }
 
@@ -196,12 +185,7 @@ export async function writeStagingLinks(rowIndex, links) {
   // For now, write them one by one (could optimize with batchUpdate later)
   let totalUpdated = 0;
   for (const update of updates) {
-    const result = await writeSheetRange(
-      config.sheetId,
-      config.stagingTabName,
-      update.range,
-      [[update.value]]
-    );
+    const result = await writeSheetRange(config.sheetId, config.stagingTabName, update.range, [[update.value]]);
     totalUpdated += result.updatedCells;
   }
 
@@ -269,10 +253,7 @@ export async function mergeLinksToMain(title, links) {
     const newValue = (links[bookstore.id] || '').trim();
 
     // Rule 1: Only update if current value is empty or "NOT_FOUND"
-    const shouldUpdate = (
-      !currentValue ||
-      currentValue === 'NOT_FOUND'
-    ) && newValue;
+    const shouldUpdate = (!currentValue || currentValue === 'NOT_FOUND') && newValue;
 
     if (shouldUpdate) {
       const columnLetter = columnIndexToLetter(columnIndex);
@@ -297,12 +278,7 @@ export async function mergeLinksToMain(title, links) {
 
   let totalUpdated = 0;
   for (const update of updates) {
-    const result = await writeSheetRange(
-      config.sheetId,
-      config.mainTabName,
-      update.range,
-      [[update.value]]
-    );
+    const result = await writeSheetRange(config.sheetId, config.mainTabName, update.range, [[update.value]]);
     totalUpdated += result.updatedCells;
   }
 
@@ -314,28 +290,79 @@ export async function mergeLinksToMain(title, links) {
 }
 
 /**
+ * Read all bookstore links from the main tab
+ * Returns a map of title -> { bookstoreId: url }
+ * @returns {Promise<Object>} Map of book titles to their links in main tab
+ */
+export async function readMainTabLinks() {
+  const config = loadConfig();
+  const data = await readSheetTab(config.sheetId, config.mainTabName);
+
+  if (!data || data.length === 0) return {};
+
+  const headers = data[0];
+
+  const titleColumnIndex = headers.findIndex(
+    (header) => header && (header.toLowerCase().includes('title') || header.includes('書名') || header === 'Title'),
+  );
+
+  if (titleColumnIndex === -1) return {};
+
+  const bookstoreColumns = {};
+  for (const bookstore of config.bookstores) {
+    const columnIndex = getColumnIndex(headers, bookstore.columnName);
+    if (columnIndex !== -1) {
+      bookstoreColumns[bookstore.id] = columnIndex;
+    }
+  }
+
+  const result = {};
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const title = row[titleColumnIndex];
+    if (!title || !title.trim()) continue;
+
+    const links = {};
+    for (const bookstore of config.bookstores) {
+      const columnIndex = bookstoreColumns[bookstore.id];
+      if (columnIndex !== undefined) {
+        links[bookstore.id] = row[columnIndex] || '';
+      }
+    }
+    result[title.trim()] = links;
+  }
+
+  return result;
+}
+
+/**
  * Generate missing links for a book
  * Only generates links for bookstores where:
- * - The value is empty/missing, OR
- * - The value is "NOT_FOUND"
+ * - The value is empty/missing OR "NOT_FOUND" in staging, AND
+ * - The value is empty/missing OR "NOT_FOUND" in the main tab
  *
  * @param {Object} book - Book object with title and links
  * @param {string} book.title - Book title
- * @param {Object} book.links - Current links object
+ * @param {Object} book.links - Current links object from staging
+ * @param {Object} mainTabLinks - Map of title -> { bookstoreId: url } from main tab
  * @returns {Promise<Object>} Object with new/updated links
  */
-export async function generateMissingLinks(book) {
+export async function generateMissingLinks(book, mainTabLinks = {}) {
   if (!book || !book.title) {
     throw new Error('Book object must have a title property');
   }
 
   const config = loadConfig();
   const { title, links } = book;
+  const mainLinks = mainTabLinks[title] || {};
 
   // Identify which bookstores need link generation
-  const bookstoresToGenerate = config.bookstores.filter(bookstore => {
-    const currentValue = (links[bookstore.id] || '').trim();
-    return !currentValue || currentValue === 'NOT_FOUND';
+  const bookstoresToGenerate = config.bookstores.filter((bookstore) => {
+    const stagingValue = (links[bookstore.id] || '').trim();
+    const mainValue = (mainLinks[bookstore.id] || '').trim();
+    const stagingPopulated = stagingValue && stagingValue !== 'NOT_FOUND';
+    const mainPopulated = mainValue && mainValue !== 'NOT_FOUND';
+    return !stagingPopulated && !mainPopulated;
   });
 
   if (bookstoresToGenerate.length === 0) {
@@ -344,11 +371,7 @@ export async function generateMissingLinks(book) {
   }
 
   // Generate links for missing bookstores
-  const generatedLinks = await generateAllLinks(
-    title,
-    bookstoresToGenerate,
-    config.searchEngine
-  );
+  const generatedLinks = await generateAllLinks(title, bookstoresToGenerate, config.searchEngine);
 
   // Merge generated links with existing links
   const updatedLinks = { ...links };
