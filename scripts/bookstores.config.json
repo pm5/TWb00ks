@@ -2,13 +2,14 @@
   "searchEngine": "google",
   "sheetId": "1Z0JUS0fw5SFaX1-oht6jEx5i8XI888vx5F9jm9BEggI",
   "stagingTabName": "暫貼區",
-  "mainTabName": "成人書單",
+  "mainTabName": "精選書籍",
   "bookstores": [
     {
       "id": "books",
       "name": "博客來",
       "columnName": "博客來",
       "domain": "books.com.tw",
+      "bookUrlMatch": null,
       "searchUrl": "https://search.books.com.tw/search/query/key/{title}"
     },
     {
@@ -16,6 +17,7 @@
       "name": "金石堂",
       "columnName": "金石堂",
       "domain": "kingstone.com.tw",
+      "bookUrlMatch": null,
       "searchUrl": "https://www.kingstone.com.tw/search/search?q={title}"
     },
     {
@@ -23,6 +25,7 @@
       "name": "誠品",
       "columnName": "誠品",
       "domain": "eslite.com",
+      "bookUrlMatch": "^https://www.eslite.com/product",
       "searchUrl": "https://www.eslite.com/Search?q={title}"
     },
     {
@@ -30,6 +33,7 @@
       "name": "momo",
       "columnName": "momo",
       "domain": "momoshop.com.tw",
+      "bookUrlMatch": "^https://www.momoshop.com.tw/goods/GoodsDetail.jsp",
       "searchUrl": null
     },
     {
@@ -37,6 +41,7 @@
       "name": "Kobo",
       "columnName": "Kobo",
       "domain": "kobo.com",
+      "bookUrlMatch": "^https://www.kobo.com/tw/zh/ebook",
       "searchUrl": null
     },
     {
@@ -44,6 +49,7 @@
       "name": "Readmoo",
       "columnName": "readmoo",
       "domain": "readmoo.com",
+      "bookUrlMatch": "^https://readmoo.com/book/",
       "searchUrl": null
     },
     {
@@ -51,6 +57,7 @@
       "name": "讀冊",
       "columnName": "tazze",
       "domain": "taaze.tw",
+      "bookUrlMatch": "^https://www.taaze.tw/products/",
       "searchUrl": null
     }
   ]

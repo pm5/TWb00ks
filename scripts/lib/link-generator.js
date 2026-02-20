@@ -24,14 +24,17 @@ function fetchWithRedirects(url, maxRedirects = 10, timeout = 10000) {
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         },
-        timeout: timeout
+        timeout: timeout,
       };
 
       const req = https.request(options, (res) => {
         // Handle redirects
         if ([301, 302, 307, 308].includes(res.statusCode) && res.headers.location) {
+          res.resume(); // consume body to free resources
+
           redirectCount++;
 
           if (redirectCount > maxRedirects) {
@@ -45,12 +48,52 @@ function fetchWithRedirects(url, maxRedirects = 10, timeout = 10000) {
             nextUrl = new URL(nextUrl, currentUrl).toString();
           }
 
+          // Google: extract actual URL from google.com/url?q=<link> instead of following further
+          try {
+            const nextUrlObj = new URL(nextUrl);
+            if (nextUrlObj.hostname.includes('google.com') && nextUrlObj.pathname === '/url') {
+              const actualUrl = nextUrlObj.searchParams.get('q');
+              if (actualUrl) {
+                resolve(actualUrl);
+                return;
+              }
+            }
+          } catch {
+            // ignore parse errors, continue following redirect
+          }
+
           // Continue following redirects
           makeRequest(nextUrl);
         } else if (res.statusCode >= 200 && res.statusCode < 300) {
-          // Success - return final URL
-          resolve(currentUrl);
+          // DuckDuckGo returns 200 with HTML body containing window.location.replace('/l/?uddg=<link>')
+          if (urlObj.hostname.toLowerCase().includes('duckduckgo.com')) {
+            let body = '';
+            res.setEncoding('utf8');
+            res.on('data', (chunk) => {
+              body += chunk;
+            });
+            res.on('end', () => {
+              const match = body.match(/window\.location\.replace\(['"]\/l\/\?([^'"]+)['"]/);
+              if (match) {
+                try {
+                  const actualUrl = new URLSearchParams(match[1]).get('uddg');
+                  if (actualUrl) {
+                    resolve(actualUrl);
+                    return;
+                  }
+                } catch {
+                  // fall through to resolve with currentUrl
+                }
+              }
+              resolve(currentUrl);
+            });
+            res.on('error', reject);
+          } else {
+            res.resume(); // consume body to free resources
+            resolve(currentUrl);
+          }
         } else {
+          res.resume();
           reject(new Error(`HTTP ${res.statusCode}`));
         }
       });
@@ -87,18 +130,57 @@ function isSearchEngineUrl(url) {
 }
 
 /**
+ * Parses a domain config value into a RegExp or plain string.
+ * Values wrapped in /…/ (with optional flags) are treated as regexps.
+ * @param {string} domain - Domain string from config
+ * @returns {{type: 'regexp', value: RegExp} | {type: 'string', value: string}}
+ */
+function parseDomain(domain) {
+  const match = domain.match(/^\/(.+)\/([gimsuy]*)$/);
+  if (match) {
+    return { type: 'regexp', value: new RegExp(match[1], match[2] || 'i') };
+  }
+  return { type: 'string', value: domain };
+}
+
+/**
  * Checks if final URL contains the expected bookstore domain
  * @param {string} url - Final URL after redirects
- * @param {string} expectedDomain - Expected bookstore domain
+ * @param {string} expectedDomain - Expected bookstore domain (plain string or /regexp/)
  * @returns {boolean} - True if URL contains expected domain
  */
 function containsExpectedDomain(url, expectedDomain) {
   try {
     const urlObj = new URL(url);
-    return urlObj.hostname.toLowerCase().includes(expectedDomain.toLowerCase());
+    const hostname = urlObj.hostname.toLowerCase();
+    const parsed = parseDomain(expectedDomain);
+    if (parsed.type === 'regexp') {
+      return parsed.value.test(hostname);
+    }
+    return hostname.includes(parsed.value.toLowerCase());
   } catch {
     return false;
   }
+}
+
+/**
+ * Checks whether a URL is a valid book URL for a bookstore.
+ * Uses bookUrlMatch regexp when provided; falls back to domain check.
+ * @param {string} url - URL to validate
+ * @param {Object} bookstore - Bookstore config with domain and optional bookUrlMatch
+ * @returns {boolean}
+ */
+function isValidBookUrl(url, bookstore) {
+  if (bookstore.bookUrlMatch) {
+    try {
+      const match = bookstore.bookUrlMatch.match(/^\/(.+)\/([gimsuy]*)$/);
+      const regexp = match ? new RegExp(match[1], match[2] || '') : new RegExp(bookstore.bookUrlMatch);
+      return regexp.test(url);
+    } catch {
+      return false;
+    }
+  }
+  return containsExpectedDomain(url, bookstore.domain);
 }
 
 /**
@@ -109,7 +191,10 @@ function containsExpectedDomain(url, expectedDomain) {
  * @returns {string} - "I'm Feeling Lucky" URL
  */
 function generateLuckyUrl(searchEngine, title, domain) {
-  const query = `site:${domain} ${title}`;
+  // Strip /regexp/ syntax to get a plain domain for the site: query
+  const parsed = parseDomain(domain);
+  const siteDomain = parsed.type === 'regexp' ? parsed.value.source : domain;
+  const query = `site:${siteDomain} ${title}`;
   const encodedQuery = encodeURIComponent(query);
 
   if (searchEngine === 'google') {
@@ -152,7 +237,7 @@ async function generateBookstoreLink(title, bookstore, searchEngine) {
     const finalUrl = await fetchWithRedirects(luckyUrl);
 
     // Check if we got redirected to the actual bookstore
-    if (!isSearchEngineUrl(finalUrl) && containsExpectedDomain(finalUrl, bookstore.domain)) {
+    if (!isSearchEngineUrl(finalUrl) && isValidBookUrl(finalUrl, bookstore)) {
       return finalUrl;
     }
 
@@ -205,7 +290,7 @@ async function generateAllLinks(title, bookstores, searchEngine) {
 
     // Wait 500ms between requests (after each completes), except after the last one
     if (i < bookstores.length - 1) {
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 
@@ -219,6 +304,8 @@ export {
   fetchWithRedirects,
   isSearchEngineUrl,
   containsExpectedDomain,
+  isValidBookUrl,
+  parseDomain,
   generateLuckyUrl,
-  generateSearchUrl
+  generateSearchUrl,
 };
